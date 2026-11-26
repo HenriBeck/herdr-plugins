@@ -31,8 +31,12 @@ export default class ClaudeUsage extends View {
   load(cx) {
     cx.spawn(async (cx) => {
       const text = await readTextFile(`${home()}/.cache/herdr-claude-usage.json`).catch(() => null);
-      if (text !== this.text) {
+      // Redraw on new data, and once a minute anyway: countdowns, "reset" and
+      // "updated … ago" depend on the clock, which Herdr doesn't redraw for.
+      const minute = Math.floor(Date.now() / 60000);
+      if (text !== this.text || minute !== this.minute) {
         this.text = text;
+        this.minute = minute;
         cx.notify();
       }
     });

@@ -18,14 +18,34 @@ next="${CLAUDE_USAGE_NEXT:-ccstatusline}"
 
 input="$(cat)"
 
+# Every open session reports its own last snapshot, and Claude Code drops a
+# window from it once that window resets. So merge into the saved file window
+# by window instead of replacing it: a window with a later reset wins; within
+# the same window the higher usage wins (usage only grows within a window).
+# Prints the new file, or nothing when there is nothing new to save.
+MERGE='
+  def pick($o; $n):
+    if $n == null then $o
+    elif $o == null then $n
+    elif $n.resets_at > $o.resets_at then $n
+    elif $n.resets_at == $o.resets_at and ($n.used_percentage // 0) > ($o.used_percentage // 0) then $n
+    else $o end;
+  (.rate_limits // {}) as $new
+  | if ($new | type) != "object" or $new == {} then empty else
+      (($old[0].rate_limits // {}) as $prev
+       | reduce ((($prev | keys) + ($new | keys)) | unique[]) as $k ({}; .[$k] = pick($prev[$k]; $new[$k]))
+       | if . == $prev then empty else {updated_at: $now, rate_limits: .} end)
+    end'
+
 {
-  limits="$(printf '%s' "$input" | jq -c '.rate_limits // null')"
-  if [ -n "$limits" ] && [ "$limits" != null ]; then
-    dir="$(dirname "$file")"
-    mkdir -p "$dir"
+  dir="$(dirname "$file")"
+  mkdir -p "$dir"
+  # A corrupt saved file is treated as empty, so it gets replaced rather than blocking every write.
+  if [ -s "$file" ] && jq -e . "$file" >/dev/null 2>&1; then old="$file"; else old=/dev/null; fi
+  merged="$(printf '%s' "$input" | jq -c --slurpfile old "$old" --argjson now "$(date +%s)" "$MERGE")"
+  if [ -n "$merged" ]; then
     tmp="$(mktemp "$dir/.herdr-claude-usage.XXXXXX")" &&
-      jq -n --argjson limits "$limits" --argjson now "$(date +%s)" \
-        '{updated_at: $now, rate_limits: $limits}' > "$tmp" &&
+      printf '%s\n' "$merged" > "$tmp" &&
       mv -f "$tmp" "$file" || rm -f "$tmp"
   fi
 } 2>/dev/null || true
