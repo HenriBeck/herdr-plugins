@@ -10,6 +10,9 @@ const MIN = 60;
 const file = (rateLimits, updatedAt = nowS) => JSON.stringify({ updated_at: updatedAt, rate_limits: rateLimits });
 const win = (used, resetsAt = nowS + 3600) => ({ used_percentage: used, resets_at: resetsAt });
 const both = (u5, u7) => file({ five_hour: win(u5), seven_day: win(u7) });
+// A local wall-clock time as epoch ms, so expectations don't depend on the test machine's zone.
+const local = (y, mo, d, h, mi) => new Date(y, mo - 1, d, h, mi).getTime();
+const rowAt = (key, ms) => ({ key, reset: false, resetsAtMs: ms });
 
 test("missing on null, empty, invalid JSON and empty object", () => {
   for (const text of [null, "", "{not json", "{}"]) {
@@ -17,36 +20,36 @@ test("missing on null, empty, invalid JSON and empty object", () => {
   }
 });
 
-test("left and level", () => {
-  const cases = [[38, 62, "ok"], [80, 20, "low"], [95, 5, "critical"], [140, 0, "critical"]];
-  for (const [used, left, level] of cases) {
-    const row = parseUsage(both(used, 0), NOW).rows[0];
-    assert.equal(row.left, left, `used ${used}`);
-    assert.equal(row.level, level, `used ${used}`);
+test("used and level, like Claude's /usage", () => {
+  const cases = [[38.4, 38, "ok"], [74, 74, "ok"], [75, 75, "low"], [89, 89, "low"], [90, 90, "critical"], [140, 100, "critical"], [-3, 0, "ok"]];
+  for (const [input, used, level] of cases) {
+    const row = parseUsage(both(input, 0), NOW).rows[0];
+    assert.equal(row.used, used, `used ${input}`);
+    assert.equal(row.level, level, `used ${input}`);
   }
 });
 
-test("row order and labels", () => {
+test("row order and labels match Claude's /usage", () => {
   const u = parseUsage(both(10, 20), NOW);
   assert.equal(u.state, "ok");
-  assert.deepEqual(u.rows.map((r) => [r.key, r.label]), [["five_hour", "5h"], ["seven_day", "week"]]);
+  assert.deepEqual(u.rows.map((r) => [r.key, r.label]), [["five_hour", "Current session"], ["seven_day", "Current week"]]);
 });
 
 test("missing window", () => {
   const u = parseUsage(file({ five_hour: win(10) }), NOW);
   assert.equal(u.state, "ok");
   assert.equal(u.rows[1].key, "seven_day");
-  assert.equal(u.rows[1].left, null);
+  assert.equal(u.rows[1].used, null);
   assert.equal(u.rows[1].level, "none");
 });
 
-test("past reset", () => {
+test("past reset counts as nothing used", () => {
   const u = parseUsage(file({ five_hour: win(90, nowS - 60), seven_day: win(10) }), NOW);
   const row = u.rows[0];
   assert.equal(row.reset, true);
-  assert.equal(row.left, 100);
+  assert.equal(row.used, 0);
   assert.equal(row.level, "ok");
-  assert.equal(formatReset(row, NOW), "reset");
+  assert.equal(formatReset(row, NOW), "Reset");
 });
 
 test("epoch vs ISO", () => {
@@ -60,15 +63,20 @@ test("stale", () => {
   assert.equal(parseUsage(file({ five_hour: win(10) }, nowS - 29 * MIN), NOW).stale, false);
 });
 
-test("formatReset five_hour", () => {
-  const at = (mins) => parseUsage(file({ five_hour: win(10, nowS + mins * MIN) }), NOW).rows[0];
-  assert.equal(formatReset(at(100), NOW), "1h40m");
-  assert.equal(formatReset(at(12), NOW), "12m");
+test("formatReset session: clock time, minutes only when not on the hour", () => {
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 18, 30)), NOW), "Resets 6:30pm");
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 19, 0)), NOW), "Resets 7pm");
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 0, 5)), NOW), "Resets 12:05am");
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 12, 0)), NOW), "Resets 12pm");
 });
 
-test("formatReset seven_day uses weekday and 24h time", () => {
-  const row = parseUsage(file({ seven_day: win(10, nowS + 2 * 24 * 3600) }), NOW).rows[1];
-  assert.match(formatReset(row, NOW), /^(Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{2}:\d{2}$/);
+test("formatReset week: date and clock time", () => {
+  assert.equal(formatReset(rowAt("seven_day", local(2026, 12, 3, 20, 0)), NOW), "Resets Dec 3, 8pm");
+  assert.equal(formatReset(rowAt("seven_day", local(2026, 12, 3, 9, 15)), NOW), "Resets Dec 3, 9:15am");
+});
+
+test("formatReset without a time", () => {
+  assert.equal(formatReset(rowAt("seven_day", null), NOW), "");
 });
 
 test("formatAge", () => {

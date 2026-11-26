@@ -69,3 +69,17 @@ Placement: Henri picked **B (sidebar card)** over the status bar and a floating 
 
 Exact spacing, font sizes and bar height. Match the existing sidebar look
 (`chrome` background, `border` top rule, 13 px text, `muted`/`dim` colours).
+
+## Update (2026-11-26, after first use)
+
+Henri asked for the card to report usage the way Claude Code's `/usage` does,
+replacing "% left":
+
+- Rows are labelled `Current session` / `Current week`, show `N% used`, a bar
+  that fills with use, and `Resets 6:30pm` / `Resets Dec 3, 8pm`.
+- Colours: orange from 75% used, red from 90%. A passed reset shows 0% used, `Reset`.
+- The collapsed rail shows % used. The block is 132 px tall.
+- The tap merges snapshots per window (later reset wins, then higher usage),
+  because every open session reports its own last snapshot.
+- The mod is installed by copying (`claude-usage/install.sh`); Herdr doesn't
+  hot-reload edits made through a symlink.
