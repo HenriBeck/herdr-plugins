@@ -83,3 +83,32 @@ replacing "% left":
   because every open session reports its own last snapshot.
 - The mod is installed by copying (`claude-usage/install.sh`); Herdr doesn't
   hot-reload edits made through a symlink.
+
+## Update (2026-11-26): a Claude Code mod replaces the status line tap
+
+Henri picked option A: drop the status line wrapper and feed the card from a
+Claude Code mod (plugin with a hooks module, Claude Code 2.1.332).
+
+| Approach | Trade-off | Picked |
+|---|---|---|
+| **A. Mod feeds the card** — a `session.measure` hook writes the same file | Claude Code pushes the figures itself; status line goes back to plain `ccstatusline` | ✅ |
+| B. Mod also draws the status line, replacing ccstatusline | One less tool, but rebuilds what ccstatusline already shows | ✗ (can be added later) |
+| C. Keep `statusline-tap.sh` | Works, but wraps the status line and needs `jq` | ✗ |
+
+- **Plugin** `herdr-claude-usage` in `claude-usage/claude-code-mod/`. The repo
+  root's `.claude-plugin/marketplace.json` (marketplace `herdr-plugins`) lists it,
+  so it installs from the local folder or from GitHub.
+- **Hook** `session.measure`: when `changed` has `rateLimits`, take the
+  `five_hour` and `seven_day` entries (`percentUsed`, ISO `resetsAt`) and merge
+  them into the file with the tap's rule (per window: later reset wins; same
+  reset → higher usage wins; a window not reported keeps its saved value).
+  Write only when the merged windows differ from what's saved.
+- **File** unchanged: `{ updated_at: epoch s, rate_limits: { five_hour:
+  { used_percentage, resets_at: epoch s }, … } }` at
+  `$HERDR_CLAUDE_USAGE_FILE` or `$HOME/.cache/herdr-claude-usage.json`, so the
+  Herdr card needs no change. A missing or corrupt file counts as empty.
+- A failed read or write never disturbs the session: the hook always calls `next(e)`.
+- **Removed:** `statusline-tap.sh`, its test, the `jq` dependency.
+  `statusLine.command` goes back to `ccstatusline`.
+- Known limit: `$.fs.write` has no rename, so the write isn't atomic; the card
+  may miss one 15 s poll if it reads mid-write.

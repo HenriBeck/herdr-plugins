@@ -1,0 +1,11 @@
+{
+  "name": "herdr-plugins",
+  "owner": { "name": "HenriBeck" },
+  "plugins": [
+    {
+      "name": "herdr-claude-usage",
+      "source": "./claude-usage/claude-code-mod",
+      "description": "Saves your Claude Code 5-hour and weekly usage for the Herdr desktop app's sidebar card"
+    }
+  ]
+}
