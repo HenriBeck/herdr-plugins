@@ -20,6 +20,7 @@ session in front of you is running on.
 | [workspace-status-lite](workspace-status-lite/) | Bottom bar, left | Herdr's own bottom bar without the "⌘⇧P commands" hint, leaving room for claude-context |
 | [pull-requests](pull-requests/) | Side panel, right | The GitHub PRs or GitLab MRs of the focused pane's branch, with pipeline, approvals and state |
 | [tabs-prs](tabs-prs/) | Tab bar, right | Herdr's own tab bar with a "PRs" button next to Files and Changes that opens pull-requests |
+| [repo-link](repo-link/) | Tab bar, far right | A GitHub or GitLab button that opens the focused pane's repository in the browser |
 
 claude-usage and claude-context each come in two parts: a Claude Code plugin
 that saves the figures under `~/.cache` after every turn, and a Herdr mod that
@@ -58,11 +59,13 @@ Sessions that were already open pick them up after a restart or
 ./workspace-status-lite/install.sh
 ./pull-requests/install.sh
 ./tabs-prs/install.sh
+./repo-link/install.sh
 ```
 
 **3. A layout that shows them.** Clone Herdr's `main` layout as `main-usage`,
 then add the usage card above the sidebar footer, swap in the lite bottom bar,
-put claude-context beside it, and add the PRs panel and its button:
+put claude-context beside it, add the PRs panel and its button, and put
+repo-link beside the tab bar:
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"main-usage"}'
@@ -85,6 +88,12 @@ jq '(.. | objects | select(.id == "panel-body") | .children) |= (map(select(.id 
     + [{"id":"pull-requests","type":"block","content":{"mod":"pull-requests"}}])
   | (.. | objects | select(.id == "tabs") | .content.mod) = "tabs-prs"' \
   "$layout" > /tmp/l.json && mv /tmp/l.json "$layout"
+
+jq '(.. | objects | select(.id == "work") | .children) |= [ .[] | if .id == "tabs"
+    then {"id":"tabs-row","type":"row","size":{"px":42},"children":[(.size = {"weight":1}),
+      {"id":"repo-link","type":"block","size":{"px":88},"window_drag":true,"content":{"mod":"repo-link"}}]}
+    else . end ]' \
+  "$layout" > /tmp/l.json && mv /tmp/l.json "$layout"
 ```
 
 `layout.clone` switches to the new layout. `main-usage` is a clone, so it doesn't receive Herdr's future changes to
@@ -99,7 +108,7 @@ symlink. Claude Code plugin edits are picked up by `/reload-plugins`.
 ```sh
 claude plugin test claude-usage/claude-code-mod
 claude plugin test claude-context/claude-code-mod
-node --test claude-usage/mod/ claude-context/mod/ pull-requests/mod/
+node --test claude-usage/mod/ claude-context/mod/ pull-requests/mod/ repo-link/mod/
 ```
 
 Screenshots come from `herdr-app shot`, cropped to the mod.
