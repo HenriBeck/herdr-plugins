@@ -19,6 +19,7 @@ session in front of you is running on.
 | [claude-context](claude-context/) | Bottom bar, right | The focused session's model, effort, context window fill and estimated cost |
 | [workspace-status-lite](workspace-status-lite/) | Bottom bar, left | Herdr's own bottom bar without the "⌘⇧P commands" hint, leaving room for claude-context |
 | [pull-requests](pull-requests/) | Side panel, right | The GitHub PRs or GitLab MRs of the focused pane's branch, with pipeline, approvals and state |
+| [tabs-prs](tabs-prs/) | Tab bar, right | Herdr's own tab bar with a "PRs" button next to Files and Changes that opens pull-requests |
 
 claude-usage and claude-context each come in two parts: a Claude Code plugin
 that saves the figures under `~/.cache` after every turn, and a Herdr mod that
@@ -26,7 +27,8 @@ reads them. Your Claude Code status line isn't touched.
 
 ## Install everything
 
-You need the Herdr desktop app, Claude Code and `jq`. Each plugin's README
+You need the Herdr desktop app, Claude Code and `jq`; for pull-requests also
+`gh` and/or `glab`, logged in. Each plugin's README
 covers installing it on its own.
 
 **1. The Claude Code plugins.** From a clone of this repo:
@@ -55,11 +57,12 @@ Sessions that were already open pick them up after a restart or
 ./claude-context/install.sh
 ./workspace-status-lite/install.sh
 ./pull-requests/install.sh
+./tabs-prs/install.sh
 ```
 
 **3. A layout that shows them.** Clone Herdr's `main` layout as `main-usage`,
-then add the usage card above the sidebar footer, swap in the lite bottom bar
-and put claude-context beside it:
+then add the usage card above the sidebar footer, swap in the lite bottom bar,
+put claude-context beside it, and add the PRs panel and its button:
 
 ```sh
 herdr-app do layout.clone '{"name":"main","as":"main-usage"}'
@@ -76,6 +79,11 @@ jq '(.. | objects | select(.id == "work") | .children) |= [ .[] | if .id == "sta
     then {"id":"status-row","type":"row","size":{"px":28},"children":[(.size = {"weight":1}),
       {"id":"claude-context","type":"block","size":{"px":360},"content":{"mod":"claude-context"}}]}
     else . end ]' \
+  "$layout" > /tmp/l.json && mv /tmp/l.json "$layout"
+
+jq '(.. | objects | select(.id == "panel-body") | .children) |= (map(select(.id != "pull-requests"))
+    + [{"id":"pull-requests","type":"block","content":{"mod":"pull-requests"}}])
+  | (.. | objects | select(.id == "tabs") | .content.mod) = "tabs-prs"' \
   "$layout" > /tmp/l.json && mv /tmp/l.json "$layout"
 ```
 
