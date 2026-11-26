@@ -18,6 +18,7 @@ session in front of you is running on.
 | [claude-usage](claude-usage/) | Left sidebar | How much of your Claude Code 5-hour and weekly limits is used, and when each resets |
 | [claude-context](claude-context/) | Bottom bar, right | The focused session's model, effort, context window fill and estimated cost |
 | [workspace-status-lite](workspace-status-lite/) | Bottom bar, left | Herdr's own bottom bar without the "⌘⇧P commands" hint, leaving room for claude-context |
+| [pull-requests](pull-requests/) | Side panel, right | The GitHub PRs or GitLab MRs of the focused pane's branch, with pipeline, approvals and state |
 
 claude-usage and claude-context each come in two parts: a Claude Code plugin
 that saves the figures under `~/.cache` after every turn, and a Herdr mod that
@@ -53,6 +54,7 @@ Sessions that were already open pick them up after a restart or
 ./claude-usage/install.sh
 ./claude-context/install.sh
 ./workspace-status-lite/install.sh
+./pull-requests/install.sh
 ```
 
 **3. A layout that shows them.** Clone Herdr's `main` layout as `main-usage`,
@@ -89,7 +91,7 @@ symlink. Claude Code plugin edits are picked up by `/reload-plugins`.
 ```sh
 claude plugin test claude-usage/claude-code-mod
 claude plugin test claude-context/claude-code-mod
-node --test claude-usage/mod/ claude-context/mod/
+node --test claude-usage/mod/ claude-context/mod/ pull-requests/mod/
 ```
 
 Screenshots come from `herdr-app shot`, cropped to the mod.
