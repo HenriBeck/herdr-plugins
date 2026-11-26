@@ -1,2 +1,5 @@
 .DS_Store
 .superpowers/
+# written by Herdr into every mod folder
+gpui-kit.d.ts
+jsconfig.json
