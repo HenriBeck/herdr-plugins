@@ -46,8 +46,9 @@ export default class ClaudeUsage extends View {
     return { ok: t.accent, low: t.blocked, critical: t.ansi1 }[level] ?? t.dim;
   }
 
-  // Like Claude's /usage: label and "% used" on one line, the bar, then when it resets.
-  row(r, now, t) {
+  // Like Claude's /usage: label and "% used" on one line, the bar, then when it
+  // resets. `note` goes right-aligned on the reset line, so the card's height never changes.
+  row(r, now, t, note) {
     const pct = r.used === null ? "—" : `${r.used}% used`;
     return v_flex().gap(4)
       .child(h_flex().justify_between().items_center()
@@ -55,7 +56,9 @@ export default class ClaudeUsage extends View {
         .child(div().flex_none().text_color(r.level === "ok" || r.level === "none" ? t.muted : this.color(r.level, t)).child(pct)))
       .child(div().w_full().h(6).rounded(3).bg(t.hover)
         .child(div().h_full().rounded(3).w(`${r.used ?? 0}%`).bg(this.color(r.level, t))))
-      .child(div().text_size(11).text_color(t.dim).truncate().child(formatReset(r, now) || " "));
+      .child(h_flex().justify_between().gap(8).text_size(11).text_color(t.dim)
+        .child(div().truncate().child(formatReset(r, now) || " "))
+        .when(Boolean(note), (el) => el.child(div().flex_none().child(note))));
   }
 
   rail(u, now, t) {
@@ -77,8 +80,7 @@ export default class ClaudeUsage extends View {
     const root = v_flex().size_full().justify_center().gap(10).px(16).py(10).text_size(12)
       .bg(t.chrome).border_t(1).border_color(t.border);
     if (u.state !== "ok") return root.child(div().text_color(t.dim).child("Start Claude Code to load usage"));
-    return root
-      .children(u.rows.map((r) => this.row(r, now, t)))
-      .when(u.stale, (el) => el.child(div().text_size(11).text_color(t.dim).child(formatAge(u.updatedAtMs, now))));
+    const age = u.stale ? formatAge(u.updatedAtMs, now) : null;
+    return root.children(u.rows.map((r, i) => this.row(r, now, t, i === 0 ? age : null)));
   }
 }
