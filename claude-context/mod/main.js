@@ -1,6 +1,6 @@
 // claude-context: the right end of Herdr's bottom bar. Shows the Claude Code
-// session in the focused pane: model, how full its context window is, and its
-// estimated cost. Reads the file the herdr-claude-context Claude Code plugin
+// session in the focused pane: model and effort, how full its context window
+// is, and its estimated cost. Reads the file the herdr-claude-context Claude Code plugin
 // writes per Herdr terminal.
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
@@ -55,13 +55,15 @@ export default class ClaudeContext extends View {
     const fill = this.color(c.level, t);
     const used = c.tokens === null ? "no tokens yet" : `${c.tokens.toLocaleString("en-US")} tokens`;
     const tip = [
-      `${c.model}`,
+      c.effort ? `${c.model}, ${c.effort} effort` : c.model,
       `Context: ${used} of ${c.window.toLocaleString("en-US")} (${c.percent}%)`,
       c.costUsd === null ? null : `Cost: ${formatCost(c.costUsd)} (estimate)`,
     ].filter(Boolean).join("\n");
 
     return root.tooltip(tip)
-      .when(Boolean(c.model), (el) => el.child(div().min_w(0).truncate().child(c.model)))
+      .when(Boolean(c.model), (el) => el.child(h_flex().min_w(0).gap(6).items_center()
+        .child(div().min_w(0).truncate().child(c.model))
+        .when(Boolean(c.effort), (el) => el.child(div().flex_none().text_color(t.dim).child(c.effort)))))
       .child(h_flex().flex_none().gap(6).items_center()
         .child(div().w(48).h(5).rounded(3).bg(t.hover)
           .child(div().h_full().rounded(3).w(`${c.percent}%`).bg(fill)))

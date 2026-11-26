@@ -54,3 +54,15 @@ length, git branch and git changes.
 ## Left to the builder
 
 Exact width, spacing and token formatting (`84k / 200k`, `1M`).
+
+## Update (2026-11-26): effort
+
+Henri asked to also show the effort the session runs at.
+
+- The plugin hooks `turn.step` (a streaming event, so an async generator that
+  passes the stream on) and records `e.effort` from the main loop's requests
+  (no `agentId`); subagents' requests are ignored. It's saved as `effort`
+  (a level such as `high`, or null) and kept by later measurements.
+- The mod API has no "current effort" read, so the bar shows it from the first
+  model request on, and a change (`/effort`) from the next request on.
+- The bar shows it dimmed after the model: `Opus 5.5  high`.

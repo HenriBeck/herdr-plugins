@@ -26,6 +26,16 @@ function engine(on: On, model = 'Opus 5.5') {
   on('session.id', () => ({ value: 'sess-1' }))
   on('session.usage', () => ({ value: { startedAt: NOW_MS, context: { window: 200000 }, rateLimits: [] } }))
   on('ui.log', () => ({ value: undefined }))
+  // The bottom of a model request: no chunks, an empty response.
+  on('turn.step', async function* (_$, e) {
+    return { turnId: e.turnId, index: e.index, answer: '', toolUses: [], stopReason: null, usage: null }
+  })
+}
+
+// Runs one model request through the hooks, reading its stream to the end.
+async function step($: { turn: { step: (e: never) => AsyncGenerator<unknown, unknown> } }, effort?: string, agentId?: string) {
+  const stream = $.turn.step({ turnId: 'turn-1', index: 0, model: 'claude-opus-5-5', effort, messageCount: 1, agentId } as never)
+  for await (const _ of stream);
 }
 
 function setup(on: On, env: Record<string, string> = { HOME: '/home/me', HC_TERMINAL_ID: 't1r' }) {
@@ -54,8 +64,29 @@ test('writes the session figures to a file named after the Herdr terminal', asyn
     model: 'Opus 5.5',
     context: { tokens: 84000, window: 200000, percent: 42 },
     cost_usd: 1.234,
+    effort: null,
     ended: false,
   })
+})
+
+test("saves the main session's effort; later measurements keep it", async ($, on) => {
+  const { files } = setup(on)
+  await step($, 'high')
+  expect(saved(files).effort).toBe('high')
+  await $.session.measure(measure({ tokens: 84000, window: 200000, percent: 42 }))
+  expect(saved(files).effort).toBe('high')
+  expect(saved(files).context.tokens).toBe(84000)
+  await step($, 'low')
+  expect(saved(files).effort).toBe('low')
+})
+
+test("a subagent's effort is ignored; the same effort is not written again", async ($, on) => {
+  const { files, d } = setup(on)
+  await step($, 'medium')
+  await step($, 'max', 'agent-7')
+  await step($, 'medium')
+  expect(saved(files).effort).toBe('medium')
+  expect(d.writes).toBe(1)
 })
 
 test('session.start writes the model and window before the first turn', async ($, on) => {

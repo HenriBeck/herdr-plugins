@@ -1,11 +1,11 @@
 # claude-context
 
 The right end of the Herdr desktop app's bottom bar shows the Claude Code
-session in the focused pane: its model, how full its context window is, and
-what it has cost so far.
+session in the focused pane: its model and the effort it runs at, how full its
+context window is, and what it has cost so far.
 
 ```
- This computer   ⑂ main   ● 3 agents   ⌘⇧P commands      Opus 5.5  ▓▓▓░░░ 42%  84k / 200k  $1.23
+ This computer   ⑂ main   ● 3 agents   ⌘⇧P commands      Opus 5.5  high  ▓▓▓░░░ 42%  84k / 200k  $1.23
 ```
 
 The bar turns orange from 75% full and red from 90%. Hover it for exact token
@@ -19,7 +19,9 @@ Two parts:
 - **`claude-code-mod/`**: a Claude Code plugin (`herdr-claude-context`). When
   a session starts, after every turn, and when it ends, it saves the session's
   figures to `~/.cache/herdr-claude-context/<terminal>.json`, named after the
-  Herdr terminal it runs in (`$HC_TERMINAL_ID`). Outside Herdr it does
+  Herdr terminal it runs in (`$HC_TERMINAL_ID`). The effort comes from the
+  session's latest model request, so it shows after the first prompt and
+  follows `/effort` changes from the next request on. Outside Herdr it does
   nothing. `/clear` empties the figures; quitting marks the file ended.
 - **`mod/`**: the Herdr mod. It reads the focused terminal's file every second
   while the window is visible, and redraws when the file or the focus changes.

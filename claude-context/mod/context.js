@@ -1,7 +1,7 @@
 // Pure logic for the claude-context mod: no imports, so `node --test` can load it.
 //
 // Input is the file the herdr-claude-context Claude Code plugin writes per Herdr terminal:
-//   { updated_at, session_id, model, context: { tokens, window, percent }, cost_usd, ended }
+//   { updated_at, session_id, model, effort, context: { tokens, window, percent }, cost_usd, ended }
 
 const num = (v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
 
@@ -27,6 +27,7 @@ export function parseContext(text) {
   return {
     state: "ok",
     model: typeof data.model === "string" ? data.model : "",
+    effort: typeof data.effort === "string" ? data.effort : null,
     tokens,
     window,
     percent,

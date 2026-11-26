@@ -8,6 +8,7 @@ const file = (over = {}) =>
     updated_at: 1764158400,
     session_id: "s",
     model: "Opus 5.5",
+    effort: "high",
     context: { tokens: 84000, window: 200000, percent: 42 },
     cost_usd: 1.234,
     ended: false,
@@ -24,12 +25,18 @@ test("reads model, tokens, window, percent and cost", () => {
   assert.deepEqual(parseContext(file()), {
     state: "ok",
     model: "Opus 5.5",
+    effort: "high",
     tokens: 84000,
     window: 200000,
     percent: 42,
     level: "ok",
     costUsd: 1.234,
   });
+});
+
+test("effort is null when the file has none (no model request yet, or a model without effort)", () => {
+  assert.equal(parseContext(file({ effort: null })).effort, null);
+  assert.equal(parseContext(file({ effort: undefined })).effort, null);
 });
 
 test("percent comes from tokens when the file has none; no tokens yet reads as 0%", () => {
