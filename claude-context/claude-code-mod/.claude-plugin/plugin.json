@@ -1,0 +1,5 @@
+{
+  "name": "herdr-claude-context",
+  "version": "0.1.0",
+  "description": "Saves each Claude Code session's context window, model and cost for the Herdr desktop app's bottom bar"
+}

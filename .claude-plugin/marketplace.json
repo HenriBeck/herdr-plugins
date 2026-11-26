@@ -1,11 +1,18 @@
 {
   "name": "herdr-plugins",
-  "owner": { "name": "HenriBeck" },
+  "owner": {
+    "name": "HenriBeck"
+  },
   "plugins": [
     {
       "name": "herdr-claude-usage",
       "source": "./claude-usage/claude-code-mod",
       "description": "Saves your Claude Code 5-hour and weekly usage for the Herdr desktop app's sidebar card"
+    },
+    {
+      "name": "herdr-claude-context",
+      "source": "./claude-context/claude-code-mod",
+      "description": "Saves each Claude Code session's context window, model and cost for the Herdr desktop app's bottom bar"
     }
   ]
 }
