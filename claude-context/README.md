@@ -4,9 +4,7 @@ The right end of the Herdr desktop app's bottom bar shows the Claude Code
 session in the focused pane: its model and the effort it runs at, how full its
 context window is, and what it has cost so far.
 
-```
- This computer   ⑂ main   ● 3 agents   ⌘⇧P commands      Opus 5.5  high  ▓▓▓░░░ 42%  84k / 200k  $1.23
-```
+<img src="../docs/screenshots/bottom-bar.png" width="985" alt="Bottom bar: on the right, Opus 5.5, high, a context bar at 8%, 82k / 1M, $0.58">
 
 The bar turns orange from 75% full and red from 90%. Hover it for exact token
 counts. The cost is Claude Code's own estimate (what `/cost` shows), not a bill.

@@ -3,9 +3,7 @@
 Herdr's bottom bar (`workspace-status`) without the "⌘⇧P commands" shortcut
 hint on the right, which leaves room for [claude-context](../claude-context/).
 
-```
- This computer   ⑂ main   ● 3 agents
-```
+<img src="../docs/screenshots/bottom-bar.png" width="985" alt="Bottom bar: This computer, branch main, 8 agents on the left, with claude-context on the right where the shortcut hint used to be">
 
 It's a modified copy of the mod Herdr ships (version 0.1.18), so it doesn't
 receive Herdr's later changes to the original. Herdr is licensed under the

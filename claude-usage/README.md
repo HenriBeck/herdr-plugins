@@ -4,15 +4,7 @@ A card in the Herdr desktop app's left sidebar showing how much of your Claude
 Code **5-hour** (session) and **weekly** limits is used, and when each resets,
 worded like Claude Code's `/usage`.
 
-```
- Current session        10% used
- ▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
- Resets 17:50
-
- Current week           27% used
- ▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░
- Resets Nov 26, 20:00
-```
+<img src="../docs/screenshots/claude-usage.png" width="295" alt="Sidebar card: current session 10% used, resets 23:00; current week 1% used, resets Dec 3, 20:00">
 
 Bars turn orange from 75% used and red from 90%. With the sidebar collapsed it
 shows the two percentages; hover them for the details.
