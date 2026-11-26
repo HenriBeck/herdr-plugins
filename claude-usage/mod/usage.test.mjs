@@ -63,16 +63,16 @@ test("stale", () => {
   assert.equal(parseUsage(file({ five_hour: win(10) }, nowS - 29 * MIN), NOW).stale, false);
 });
 
-test("formatReset session: clock time, minutes only when not on the hour", () => {
-  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 18, 30)), NOW), "Resets 6:30pm");
-  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 19, 0)), NOW), "Resets 7pm");
-  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 0, 5)), NOW), "Resets 12:05am");
-  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 12, 0)), NOW), "Resets 12pm");
+test("formatReset session: 24-hour clock time", () => {
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 18, 30)), NOW), "Resets 18:30");
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 19, 0)), NOW), "Resets 19:00");
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 0, 5)), NOW), "Resets 00:05");
+  assert.equal(formatReset(rowAt("five_hour", local(2026, 11, 26, 9, 15)), NOW), "Resets 09:15");
 });
 
-test("formatReset week: date and clock time", () => {
-  assert.equal(formatReset(rowAt("seven_day", local(2026, 12, 3, 20, 0)), NOW), "Resets Dec 3, 8pm");
-  assert.equal(formatReset(rowAt("seven_day", local(2026, 12, 3, 9, 15)), NOW), "Resets Dec 3, 9:15am");
+test("formatReset week: date and 24-hour time", () => {
+  assert.equal(formatReset(rowAt("seven_day", local(2026, 12, 3, 20, 0)), NOW), "Resets Dec 3, 20:00");
+  assert.equal(formatReset(rowAt("seven_day", local(2026, 12, 3, 9, 15)), NOW), "Resets Dec 3, 09:15");
 });
 
 test("formatReset without a time", () => {

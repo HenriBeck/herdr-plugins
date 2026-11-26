@@ -51,15 +51,14 @@ export function parseUsage(text, nowMs) {
   return { state: "ok", updatedAtMs, stale: nowMs - updatedAtMs > STALE_MS, rows };
 }
 
-/** Claude's /usage wording: "Resets 6:30pm" for the session, "Resets Dec 3, 8pm" for the week. */
+/** Claude's /usage wording, 24-hour clock: "Resets 18:30" for the session, "Resets Dec 3, 20:00" for the week. */
 export function formatReset(row, _nowMs) {
   if (row.reset) return "Reset";
   if (row.resetsAtMs === null) return "";
   // Built by hand: Herdr's script runtime may not carry full Intl locale data.
   const d = new Date(row.resetsAtMs);
-  const h = d.getHours() % 12 || 12;
-  const mins = d.getMinutes();
-  const time = `${h}${mins ? `:${String(mins).padStart(2, "0")}` : ""}${d.getHours() < 12 ? "am" : "pm"}`;
+  const pad = (n) => String(n).padStart(2, "0");
+  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   return row.key === "five_hour" ? `Resets ${time}` : `Resets ${MONTHS[d.getMonth()]} ${d.getDate()}, ${time}`;
 }
 

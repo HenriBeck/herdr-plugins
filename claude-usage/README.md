@@ -7,11 +7,11 @@ worded like Claude Code's `/usage`.
 ```
  Current session        10% used
  ▓▓░░░░░░░░░░░░░░░░░░░░░░░░░░░░░
- Resets 5:50pm
+ Resets 17:50
 
  Current week           27% used
  ▓▓▓▓▓▓▓▓░░░░░░░░░░░░░░░░░░░░░░░
- Resets Nov 26, 8pm
+ Resets Nov 26, 20:00
 ```
 
 Bars turn orange from 75% used and red from 90%. With the sidebar collapsed it

@@ -76,7 +76,7 @@ Henri asked for the card to report usage the way Claude Code's `/usage` does,
 replacing "% left":
 
 - Rows are labelled `Current session` / `Current week`, show `N% used`, a bar
-  that fills with use, and `Resets 6:30pm` / `Resets Dec 3, 8pm`.
+  that fills with use, and `Resets 18:30` / `Resets Dec 3, 20:00` (24-hour clock).
 - Colours: orange from 75% used, red from 90%. A passed reset shows 0% used, `Reset`.
 - The collapsed rail shows % used. The block is 132 px tall.
 - The tap merges snapshots per window (later reset wins, then higher usage),
