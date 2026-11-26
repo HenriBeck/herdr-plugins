@@ -26,6 +26,16 @@ export function parseRemoteHost(url) {
   return null;
 }
 
+/** The lowercase owner (first path segment) of a git remote URL, or null. */
+export function parseRemoteOwner(url) {
+  const text = str(url).trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\/[^/]+\/([^/]+)\//i.exec(text);
+  if (withScheme) return withScheme[1].toLowerCase();
+  const scpLike = /^(?:[^@/\s]+@)?[^/:\s]+:(?!\/)([^/]+)\//.exec(text);
+  if (scpLike) return scpLike[1].toLowerCase();
+  return null;
+}
+
 export function providerFor(host) {
   if (host === "github.com") return "github";
   if (typeof host === "string" && host.includes("gitlab")) return "gitlab";
@@ -34,7 +44,7 @@ export function providerFor(host) {
 
 /** Drops credentials from URLs in the text (`https://user:token@host` → `https://host`). */
 export function scrub(text) {
-  return str(text).replace(/:\/\/[^/\s@]+@/g, "://");
+  return str(text).replace(/:\/\/[^/\s]*@/g, "://");
 }
 
 /** The first non-empty line, trimmed, without credentials, at most 200 characters. */
@@ -69,10 +79,12 @@ function githubState(pr) {
   return "closed";
 }
 
-/** `gh pr list --json …` output → Pr[]; PRs from forks are left out. */
-export function summarizeGithub(prs) {
+/** `gh pr list --json …` output → Pr[]. PRs from forks are left out, except the
+ *  ones from `owner` (the remote's owner: someone working from their own fork). */
+export function summarizeGithub(prs, owner = null) {
+  const ours = (pr) => pr.isCrossRepository !== true || (owner !== null && str(pr.headRepositoryOwner?.login).toLowerCase() === owner);
   return list(prs)
-    .filter((pr) => pr && pr.isCrossRepository !== true)
+    .filter((pr) => pr && ours(pr))
     .map((pr) => {
       const url = str(pr.url);
       const decision = GITHUB_DECISIONS[pr.reviewDecision] ?? null;
@@ -171,6 +183,17 @@ export function sortPrs(prs) {
     const group = Number(!STILL_OPEN.has(a.state)) - Number(!STILL_OPEN.has(b.state));
     return group || str(b.updatedAt).localeCompare(str(a.updatedAt));
   });
+}
+
+const REFRESH_MS = 60000;
+// Coming back to a pane refreshes it, unless its answer is only seconds old.
+const REVISIT_MS = 10000;
+
+/** Whether the panel should fetch now, given when the shown key was last fetched (null: never). */
+export function refreshDue({ cachedAt, now, force, justShown, keyChanged }) {
+  if (cachedAt === null || force || justShown) return true;
+  const age = now - cachedAt;
+  return age >= REFRESH_MS || (keyChanged && age >= REVISIT_MS);
 }
 
 const PIPELINE_LABELS = {

@@ -4,10 +4,17 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
 import { spaces, panes, focused, layout, window, theme, exec, checking } from "herdr";
-import { loadPullRequests } from "./load.js";
-import { pipelineLabel, approvalsLabel, ageLabel } from "./prs.js";
+import { loadPullRequests, repoRoot } from "./load.js";
+import { pipelineLabel, approvalsLabel, ageLabel, refreshDue } from "./prs.js";
 
-const REFRESH_MS = 60000;
+// Kept answers and folder → repo lookups; the oldest go first past these.
+const MAX_CACHED = 50, MAX_ROOTS = 200;
+
+function remember(map, key, value, max) {
+  map.delete(key);
+  map.set(key, value);
+  if (map.size > max) map.delete(map.keys().next().value);
+}
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -37,25 +44,55 @@ export default class PullRequests extends View {
   init(_props, cx) {
     this.cache = new Map(); // key → { result, at }
     this.loading = new Set(); // keys being fetched
+    this.roots = new Map(); // [on, cwd] → repo root (null: not a repo)
+    this.resolving = new Set(); // [on, cwd] being looked up
     this.wasShown = false;
     if (checking()) return; // `herdr-app check` runs init for real: no gh / glab calls there.
     cx.timer.every(1000, (cx) => this.tick(cx));
   }
 
+  // The cache key: the repo, not the folder, so moving around inside a repo
+  // keeps its answer. Undefined until the folder's repo root is known.
+  keyFor(where) {
+    const folder = JSON.stringify([where.on, where.cwd]);
+    if (!this.roots.has(folder)) return undefined;
+    return JSON.stringify([where.on, this.roots.get(folder) ?? where.cwd, where.branch]);
+  }
+
   tick(cx, force = false) {
     const now = shown(), justShown = now && !this.wasShown;
-    this.wasShown = now;
-    if (!now) return;
+    if (!now) {
+      this.wasShown = false;
+      return;
+    }
     const where = location();
     if (!where.cwd) return;
-    const key = JSON.stringify([where.on, where.cwd, where.branch]);
-    if (key !== this.key) {
+    const key = this.keyFor(where);
+    if (key === undefined) {
+      this.resolve(where, cx); // ticks again once the root is known
+      return;
+    }
+    this.wasShown = true;
+    const keyChanged = key !== this.key;
+    if (keyChanged) {
       this.key = key;
       cx.notify(); // the header follows focus straight away
     }
     if (this.loading.has(key)) return;
-    const cached = this.cache.get(key);
-    if (force || justShown || !cached || Date.now() - cached.at >= REFRESH_MS) this.refresh(key, where, cx);
+    const cachedAt = this.cache.get(key)?.at ?? null;
+    if (refreshDue({ cachedAt, now: Date.now(), force, justShown, keyChanged })) this.refresh(key, where, cx);
+  }
+
+  resolve(where, cx) {
+    const folder = JSON.stringify([where.on, where.cwd]);
+    if (this.resolving.has(folder)) return;
+    this.resolving.add(folder);
+    cx.spawn(async (cx) => {
+      remember(this.roots, folder, await repoRoot(where, exec), MAX_ROOTS);
+      this.resolving.delete(folder);
+      this.tick(cx);
+      cx.notify();
+    });
   }
 
   refresh(key, where, cx) {
@@ -65,7 +102,7 @@ export default class PullRequests extends View {
       const result = await loadPullRequests({ cwd: where.cwd, on: where.on }, exec);
       // Stored under its own key: render looks up the focused one, so a late
       // answer for another pane never shows here.
-      this.cache.set(key, { result, at: Date.now() });
+      remember(this.cache, key, { result, at: Date.now() }, MAX_CACHED);
       this.loading.delete(key);
       cx.notify();
     });
@@ -102,14 +139,14 @@ export default class PullRequests extends View {
   render(cx) {
     const t = theme();
     const where = location();
-    const key = where.cwd ? JSON.stringify([where.on, where.cwd, where.branch]) : null;
+    const key = where.cwd ? this.keyFor(where) : null;
     const cached = key ? this.cache.get(key) : null;
     const loading = key ? this.loading.has(key) : false;
     const result = cached?.result;
     const branch = result?.branch ?? where.branch;
 
     let body;
-    if (!key) body = "No focused pane";
+    if (!where.cwd) body = "No focused pane";
     else if (!result) body = "Loading…";
     else if (result.kind === "message") body = result.text;
 

@@ -10,6 +10,8 @@ import {
   summarizeGitlabList,
   withGitlabDetails,
   sortPrs,
+  parseRemoteOwner,
+  refreshDue,
   pipelineLabel,
   approvalsLabel,
   ageLabel,
@@ -194,4 +196,34 @@ test("labels", () => {
   assert.equal(ageLabel(5_000), "just now");
   assert.equal(ageLabel(90_000), "1 min ago");
   assert.equal(ageLabel(2 * 3600_000), "2 h ago");
+});
+
+test("scrub: a password with a raw @ is dropped whole", () => {
+  assert.equal(scrub("fatal: https://u:p@ss@host/x"), "fatal: https://host/x");
+});
+
+test("parseRemoteOwner", () => {
+  assert.equal(parseRemoteOwner("git@github.com:HenriBeck/herdr-plugins.git"), "henribeck");
+  assert.equal(parseRemoteOwner("https://u:tok@github.com/Some-Org/r.git"), "some-org");
+  assert.equal(parseRemoteOwner("ssh://git@github.com:22/o/r"), "o");
+  assert.equal(parseRemoteOwner("/local/path"), null);
+});
+
+test("summarizeGithub: a fork PR from the remote's own owner is kept", () => {
+  const fork = { ...gh, isCrossRepository: true, headRepositoryOwner: { login: "HenriBeck" } };
+  assert.equal(summarizeGithub([fork], "henribeck").length, 1);
+  assert.equal(summarizeGithub([fork], "someone-else").length, 0);
+  assert.equal(summarizeGithub([fork]).length, 0);
+});
+
+test("refreshDue", () => {
+  const now = 1_000_000;
+  assert.equal(refreshDue({ cachedAt: null, now, force: false, justShown: false, keyChanged: false }), true);
+  assert.equal(refreshDue({ cachedAt: now - 5_000, now, force: false, justShown: false, keyChanged: false }), false);
+  assert.equal(refreshDue({ cachedAt: now - 60_000, now, force: false, justShown: false, keyChanged: false }), true);
+  assert.equal(refreshDue({ cachedAt: now - 5_000, now, force: true, justShown: false, keyChanged: false }), true);
+  assert.equal(refreshDue({ cachedAt: now - 5_000, now, force: false, justShown: true, keyChanged: false }), true);
+  // Switching back to a pane refreshes it, unless it was fetched moments ago.
+  assert.equal(refreshDue({ cachedAt: now - 15_000, now, force: false, justShown: false, keyChanged: true }), true);
+  assert.equal(refreshDue({ cachedAt: now - 5_000, now, force: false, justShown: false, keyChanged: true }), false);
 });

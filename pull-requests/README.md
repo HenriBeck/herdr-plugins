@@ -22,14 +22,17 @@ and logged in (`gh auth login`, `glab auth login`). In a space on another
 machine they run there.
 
 - **GitHub**: one `gh pr list --head <branch> --state all` call. PRs from
-  forks that use the same branch name are left out.
+  other people's forks that use the same branch name are left out; PRs from
+  a fork owned by the remote's owner (working from your own fork) stay.
 - **GitLab**: `glab mr list --source-branch <branch> --all`, then, for the
   first five MRs, `glab mr view` for the pipeline and the approvals API.
 
 It fetches when the panel opens, when you focus another pane or the branch
 changes, every minute while the panel is open, and when you click ⟳. Nothing
-runs while the panel is closed or the window is hidden. Each pane's last
-answer is kept, so switching back shows it straight away while it refreshes.
+runs while the panel is closed or the window is hidden. The last answer for
+each repo and branch is kept, so switching back to a pane, or moving to another
+folder in the same repo, shows it straight away; it's refreshed unless it's
+only seconds old.
 
 The panel never shows remote URLs, and errors from the CLIs are stripped of
 credentials before they're shown.

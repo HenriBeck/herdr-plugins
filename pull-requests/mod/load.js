@@ -6,6 +6,7 @@
 //        | { kind: "message", branch: string | null, text }
 import {
   parseRemoteHost,
+  parseRemoteOwner,
   providerFor,
   firstLine,
   summarizeGithub,
@@ -17,7 +18,7 @@ import {
 const TIMEOUT_MS = 20000;
 // GitLab needs two more calls per MR for pipeline and approvals: only for the first few.
 const GITLAB_DETAILS = 5;
-const GH_FIELDS = "number,title,state,isDraft,headRefName,baseRefName,url,updatedAt,isCrossRepository,reviewDecision,latestReviews,statusCheckRollup,mergeable";
+const GH_FIELDS = "number,title,state,isDraft,headRefName,baseRefName,url,updatedAt,isCrossRepository,headRepositoryOwner,reviewDecision,latestReviews,statusCheckRollup,mergeable";
 
 // Thrown inside loadPullRequests to end it with a message.
 class Stop {
@@ -68,9 +69,9 @@ async function optionalJson(run, command, args) {
   }
 }
 
-async function githubPrs(run, branch) {
+async function githubPrs(run, branch, owner) {
   const list = await cliJson(run, "gh", ["pr", "list", "--head", branch, "--state", "all", "--limit", "20", "--json", GH_FIELDS]);
-  return sortPrs(summarizeGithub(list));
+  return sortPrs(summarizeGithub(list, owner));
 }
 
 async function gitlabPrs(run, branch) {
@@ -90,6 +91,16 @@ async function gitlabPrs(run, branch) {
   return detailed.concat(prs.slice(GITLAB_DETAILS));
 }
 
+/** The repository's top folder for a folder in it, or null (not a repo, git missing). */
+export async function repoRoot(where, exec) {
+  try {
+    const out = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: where.cwd, on: where.on ?? null, timeout: TIMEOUT_MS });
+    return out.code === 0 && out.stdout.trim() ? out.stdout.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Never rejects: every failure becomes a `message` result. */
 export async function loadPullRequests(where, exec) {
   const run = runner(where, exec);
@@ -103,7 +114,7 @@ export async function loadPullRequests(where, exec) {
     if (!url) throw new Stop("This repo has no remote");
     const provider = providerFor(parseRemoteHost(url));
     if (!provider) throw new Stop("This repo isn't on GitHub or GitLab");
-    const prs = provider === "github" ? await githubPrs(run, branch) : await gitlabPrs(run, branch);
+    const prs = provider === "github" ? await githubPrs(run, branch, parseRemoteOwner(url)) : await gitlabPrs(run, branch);
     if (!prs.length) {
       throw new Stop(`No ${provider === "github" ? "pull requests" : "merge requests"} for ${branch}`);
     }

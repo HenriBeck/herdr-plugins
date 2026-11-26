@@ -1,7 +1,7 @@
 // Run: node --test pull-requests/mod/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadPullRequests } from "./load.js";
+import { loadPullRequests, repoRoot } from "./load.js";
 
 // A stand-in for Herdr's exec: answers from a table keyed by "<command> <args>",
 // exit code 1 for anything not in it, and records every call.
@@ -26,7 +26,7 @@ const git = (branch, remote) => ({
 const GITHUB = "git@github.com:o/r.git";
 const GITLAB = "git@gitlab.com:g/p.git";
 const GH_LIST = (branch) =>
-  `gh pr list --head ${branch} --state all --limit 20 --json number,title,state,isDraft,headRefName,baseRefName,url,updatedAt,isCrossRepository,reviewDecision,latestReviews,statusCheckRollup,mergeable`;
+  `gh pr list --head ${branch} --state all --limit 20 --json number,title,state,isDraft,headRefName,baseRefName,url,updatedAt,isCrossRepository,headRepositoryOwner,reviewDecision,latestReviews,statusCheckRollup,mergeable`;
 const GLAB_LIST = (branch) => `glab mr list --source-branch ${branch} --all -F json --per-page 20`;
 const ghPr = { number: 7, title: "T", url: "https://github.com/o/r/pull/7", state: "OPEN", isDraft: false,
   headRefName: "feat/a", baseRefName: "main", updatedAt: "2026-11-26T10:00:00Z", isCrossRepository: false,
@@ -174,4 +174,23 @@ test("GitLab: no MRs and glab missing", async () => {
   assert.deepEqual(await loadPullRequests(where, exec), { kind: "message", branch: "feat/a", text: "No merge requests for feat/a" });
   ({ exec } = fakeExec({ ...git("feat/a", GITLAB), [GLAB_LIST("feat/a")]: new Error("not found") }));
   assert.deepEqual(await loadPullRequests(where, exec), { kind: "message", branch: "feat/a", text: "glab isn't installed" });
+});
+
+test("GitHub: PRs from the origin owner's fork are kept", async () => {
+  const fork = { ...ghPr, isCrossRepository: true, headRepositoryOwner: { login: "me" } };
+  const { exec } = fakeExec({ ...git("feat/a", "git@github.com:me/r.git"), [GH_LIST("feat/a")]: { stdout: JSON.stringify([fork]) } });
+  const result = await loadPullRequests(where, exec);
+  assert.equal(result.kind, "prs");
+  assert.equal(result.prs.length, 1);
+});
+
+test("repoRoot", async () => {
+  let { exec, calls } = fakeExec({ "git rev-parse --show-toplevel": { stdout: "/r\n" } });
+  assert.equal(await repoRoot({ cwd: "/r/sub", on: "devbox" }, exec), "/r");
+  assert.equal(calls[0].options.cwd, "/r/sub");
+  assert.equal(calls[0].options.on, "devbox");
+  ({ exec } = fakeExec({}));
+  assert.equal(await repoRoot(where, exec), null);
+  ({ exec } = fakeExec({ "git rev-parse --show-toplevel": new Error("spawn git ENOENT") }));
+  assert.equal(await repoRoot(where, exec), null);
 });
