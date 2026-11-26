@@ -1,6 +1,6 @@
 // Pure logic for the claude-usage mod: no imports, so `node --test` can load it.
 //
-// Input is the file statusline-tap.sh writes:
+// Input is the file the herdr-claude-usage Claude Code plugin writes:
 //   { "updated_at": <epoch s>, "rate_limits": { "five_hour": {...}, "seven_day": {...} } }
 // where each window is { used_percentage: number, resets_at: epoch s | ISO string }.
 

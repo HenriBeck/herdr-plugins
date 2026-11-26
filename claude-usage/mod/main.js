@@ -1,5 +1,5 @@
 // claude-usage: a sidebar card with how much of the Claude Code 5-hour and
-// weekly limits is used, worded like Claude Code's /usage. Reads the file statusline-tap.sh writes.
+// weekly limits is used, worded like Claude Code's /usage. Reads the file the herdr-claude-usage Claude Code plugin writes.
 import { View, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { readTextFile, home, theme, layout, window } from "herdr";
