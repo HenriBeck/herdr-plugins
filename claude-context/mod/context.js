@@ -44,6 +44,14 @@ export function formatTokens(n) {
   return String(n);
 }
 
+/** "claude-opus-5-5" → "Opus 5.5", "claude-haiku-4-5-20251001" → "Haiku 4.5";
+ *  anything else (a display name already, another naming) is shown as it is. */
+export function formatModel(model) {
+  const m = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?:-\d{8})?(?:\[\w+\])?$/i.exec(model);
+  if (!m) return model;
+  return `${m[1][0].toUpperCase()}${m[1].slice(1)} ${m[2]}${m[3] ? `.${m[3]}` : ""}`;
+}
+
 /** "$1.23"; null → "". */
 export function formatCost(usd) {
   return usd === null ? "" : `$${usd.toFixed(2)}`;

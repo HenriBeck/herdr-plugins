@@ -1,7 +1,7 @@
 // Run: node --test claude-context/mod/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseContext, formatTokens, formatCost } from "./context.js";
+import { parseContext, formatTokens, formatCost, formatModel } from "./context.js";
 
 const file = (over = {}) =>
   JSON.stringify({
@@ -59,6 +59,19 @@ test("level: orange from 75% full, red from 90%, clamped to 0..100", () => {
 test("formatTokens", () => {
   const cases = [[null, "—"], [0, "0"], [950, "950"], [1000, "1k"], [84321, "84k"], [200000, "200k"], [1000000, "1M"], [1500000, "1.5M"]];
   for (const [n, s] of cases) assert.equal(formatTokens(n), s, `n ${n}`);
+});
+
+test("formatModel", () => {
+  const cases = [
+    ["claude-opus-5-5", "Opus 5.5"],
+    ["claude-fable-5-2", "Fable 5.2"],
+    ["claude-haiku-4-5-20251001", "Haiku 4.5"],
+    ["claude-opus-5-5[1m]", "Opus 5.5"],
+    ["claude-opus-4", "Opus 4"],
+    ["Opus 5.5", "Opus 5.5"],
+    ["us.anthropic.claude-sonnet-5-5-v1:0", "us.anthropic.claude-sonnet-5-5-v1:0"],
+  ];
+  for (const [id, name] of cases) assert.equal(formatModel(id), name, id);
 });
 
 test("formatCost", () => {

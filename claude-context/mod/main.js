@@ -5,7 +5,7 @@
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { readTextFile, home, theme, window, focused, agents } from "herdr";
-import { parseContext, formatTokens, formatCost } from "./context.js";
+import { parseContext, formatTokens, formatCost, formatModel } from "./context.js";
 
 // The file is tiny and only read for the focused terminal, so a short poll is cheap.
 const POLL_MS = 1000;
@@ -53,6 +53,7 @@ export default class ClaudeContext extends View {
     if (c.state !== "ok") return root;
 
     const fill = this.color(c.level, t);
+    const model = formatModel(c.model);
     const used = c.tokens === null ? "no tokens yet" : `${c.tokens.toLocaleString("en-US")} tokens`;
     const tip = [
       c.effort ? `${c.model}, ${c.effort} effort` : c.model,
@@ -62,7 +63,7 @@ export default class ClaudeContext extends View {
 
     return root.tooltip(tip)
       .when(Boolean(c.model), (el) => el.child(h_flex().min_w(0).gap(6).items_center()
-        .child(div().min_w(0).truncate().child(c.model))
+        .child(div().min_w(0).truncate().child(model))
         .when(Boolean(c.effort), (el) => el.child(div().flex_none().text_color(t.dim).child(c.effort)))))
       .child(h_flex().flex_none().gap(6).items_center()
         .child(div().w(48).h(5).rounded(3).bg(t.hover)
