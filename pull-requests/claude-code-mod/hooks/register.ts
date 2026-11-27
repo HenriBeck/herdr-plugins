@@ -16,7 +16,9 @@ type View = { session_id: string | null; ended: boolean; prs: Entry[] }
 
 // The conversation whose list is in the terminal file, its PRs, and the
 // terminal file's last content (without updated_at), so unchanged views aren't written.
-type State = { id: string | null; prs: Entry[]; terminalText: string | null }
+// `active` is false in a headless process (`claude -p`, the SDK): it inherits
+// HC_TERMINAL_ID from the pane but isn't the pane's conversation.
+type State = { active: boolean; id: string | null; prs: Entry[]; terminalText: string | null }
 
 const MAX_PRS = 20
 
@@ -46,6 +48,38 @@ export function isMcpCreate(e: { tool: string; merge_request_iid?: unknown }): b
   return e.tool.endsWith('__save_merge_request') && e.merge_request_iid == null
 }
 
+const LINK_KEYS = ['web_url', 'html_url']
+
+// The created PR's own link in an MCP result: a `web_url` / `html_url` that is a
+// PR URL, looked for level by level (JSON inside text blocks too), so a link in
+// the PR's description doesn't win over the PR itself.
+function linkedPrUrl(value: unknown, depth = 0): string | undefined {
+  if (depth > 4) return undefined
+  if (typeof value === 'string') {
+    try {
+      return linkedPrUrl(JSON.parse(value), depth + 1)
+    } catch {
+      return undefined
+    }
+  }
+  if (!value || typeof value !== 'object') return undefined
+  const fields = value as Record<string, unknown>
+  for (const key of LINK_KEYS) {
+    const [url] = typeof fields[key] === 'string' ? findPrUrls(fields[key] as string) : []
+    if (url) return url
+  }
+  for (const child of Object.values(fields)) {
+    const url = linkedPrUrl(child, depth + 1)
+    if (url) return url
+  }
+  return undefined
+}
+
+/** The PR an MCP create made: its own link, else the first PR URL in the result. */
+export function mcpPrUrl(result: unknown): string | undefined {
+  return linkedPrUrl(result) ?? findPrUrls(typeof result === 'string' ? result : JSON.stringify(result) ?? '')[0]
+}
+
 async function folder($: Engine): Promise<string> {
   return (await $.env.get('HERDR_CLAUDE_PRS_DIR')) ?? `${await $.env.get('HOME')}/.cache/herdr-claude-prs`
 }
@@ -66,14 +100,27 @@ async function loadRecord($: Engine, dir: string, id: string): Promise<Entry[]> 
   }
 }
 
-async function writeTerminal($: Engine, state: State, view: View) {
+// `force`: write even when unchanged here, since another process (a nested
+// claude) may have overwritten the file.
+async function writeTerminal($: Engine, state: State, view: View, force = false) {
   const terminal = await $.env.get('HC_TERMINAL_ID')
   if (!terminal) return
   const text = JSON.stringify(view)
-  if (text === state.terminalText) return
+  if (text === state.terminalText && !force) return
   const updated_at = await nowSeconds($)
   await $.fs.write(`${await folder($)}/${terminal}.json`, `${JSON.stringify({ updated_at, ...view })}\n`)
   state.terminalText = text
+}
+
+// Whether the terminal file still holds what this process last wrote there
+// (a nested claude in the same pane may have overwritten it).
+async function terminalIntact($: Engine, state: State): Promise<boolean> {
+  try {
+    const { session_id, ended, prs } = JSON.parse(String(await $.fs.read(`${await folder($)}/${await $.env.get('HC_TERMINAL_ID')}.json`)))
+    return JSON.stringify({ session_id, ended, prs }) === state.terminalText
+  } catch {
+    return false
+  }
 }
 
 // Shows the conversation `id` in the terminal file, with its saved PRs.
@@ -102,13 +149,14 @@ function logFailure($: Engine, err: unknown) {
 }
 
 export const register: Register = on => {
-  const state: State = { id: null, prs: [], terminalText: null }
+  const state: State = { active: true, id: null, prs: [], terminalText: null }
 
   // A new process, `claude --resume` (which keeps the session id) or a plugin reload.
   on('session.start', async ($, e, next) => {
     const result = await next(e)
+    state.active = e.isInteractive !== false
     try {
-      if (await $.env.get('HC_TERMINAL_ID')) await switchTo($, state, await $.session.id())
+      if (state.active && (await $.env.get('HC_TERMINAL_ID'))) await switchTo($, state, await $.session.id())
     } catch (err) {
       logFailure($, err)
     }
@@ -119,9 +167,12 @@ export const register: Register = on => {
   // under the new id is where the new conversation's list comes in.
   on('prompt.submit', async ($, e, next) => {
     try {
-      if (await $.env.get('HC_TERMINAL_ID')) {
+      if (state.active && (await $.env.get('HC_TERMINAL_ID'))) {
         const id = await $.session.id()
         if (id !== state.id) await switchTo($, state, id)
+        else if (!(await terminalIntact($, state))) {
+          await writeTerminal($, state, { session_id: id, ended: false, prs: state.prs }, true)
+        }
       }
     } catch (err) {
       logFailure($, err)
@@ -130,6 +181,7 @@ export const register: Register = on => {
   })
 
   on('session.end', async ($, e, next) => {
+    if (!state.active) return next(e)
     try {
       if (e.reason === 'clear' || e.reason === 'resume') {
         // Another conversation takes over this process: drop the old list at once.
@@ -147,15 +199,15 @@ export const register: Register = on => {
 
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
-    if (ran.deny !== undefined || ran.isError === true) return ran
+    if (!state.active || ran.deny !== undefined || ran.isError === true) return ran
     try {
       let urls: string[] = []
       if (e.tool === 'Bash' && isCreateCommand(e.command)) {
         const out = ran.result as { stdout?: unknown; stderr?: unknown } | undefined
         urls = findPrUrls(`${String(out?.stdout ?? '')}\n${String(out?.stderr ?? '')}`)
       } else if (isMcpCreate(e as { tool: string; merge_request_iid?: unknown })) {
-        const result: unknown = ran.result
-        urls = findPrUrls(typeof result === 'string' ? result : JSON.stringify(result) ?? '').slice(0, 1)
+        const url = mcpPrUrl(ran.result)
+        urls = url ? [url] : []
       }
       await record($, state, urls)
     } catch (err) {

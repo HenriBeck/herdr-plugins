@@ -271,3 +271,38 @@ test('the lifecycle does nothing outside Herdr', async ($, on) => {
   await $.session.end(end('prompt_input_exit'))
   expect(d.writes).toBe(0)
 })
+
+test('MCP create records the created MR, not one linked in its description', async ($, on) => {
+  const { files, world } = setup(on)
+  world.answer = { result: { id: 1, iid: 9, description: 'Follow-up to https://gitlab.com/g/other/-/merge_requests/3', web_url: 'https://gitlab.com/g/p/-/merge_requests/9' } }
+  await $.tool.call({ tool: 'mcp__claude_ai_Gitlab__save_merge_request', title: 'x' } as never)
+  expect(urls(files, TERMINAL)).toEqual(['https://gitlab.com/g/p/-/merge_requests/9'])
+})
+
+test('MCP create reads web_url from JSON inside a text content block', async ($, on) => {
+  const { files, world } = setup(on)
+  const body = { description: 'see https://github.com/o/r/pull/1', html_url: 'https://github.com/o/r/pull/2' }
+  world.answer = { result: [{ type: 'text', text: JSON.stringify(body) }] }
+  await $.tool.call({ tool: 'mcp__github__create_pull_request', title: 'x' } as never)
+  expect(urls(files, TERMINAL)).toEqual(['https://github.com/o/r/pull/2'])
+})
+
+test('a headless claude -p in the same terminal writes nothing', async ($, on) => {
+  const { d, world } = setup(on)
+  await $.session.start({ cwd: '/w', surface: null, isInteractive: false } as never)
+  world.answer = bash(`${PR7}\n`)
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  await $.prompt.submit({ text: 'hi' } as never)
+  await $.session.end(end('other'))
+  expect(d.writes).toBe(0)
+})
+
+test("the next prompt restores the terminal file another process overwrote", async ($, on) => {
+  const { files, world } = setup(on)
+  await $.session.start(start)
+  world.answer = bash(`${PR7}\n`)
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  files[TERMINAL] = JSON.stringify({ updated_at: 1, session_id: 'child', ended: true, prs: [] })
+  await $.prompt.submit({ text: 'hi' } as never)
+  expect(read(files, TERMINAL)).toEqual({ updated_at: NOW_S, session_id: 'sess-1', ended: false, prs: [{ url: PR7, created_at: NOW_S }] })
+})
