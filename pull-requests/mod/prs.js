@@ -80,9 +80,11 @@ function githubState(pr) {
 }
 
 /** `gh pr list --json …` output → Pr[]. PRs from forks are left out, except the
- *  ones from `owner` (the remote's owner: someone working from their own fork). */
-export function summarizeGithub(prs, owner = null) {
-  const ours = (pr) => pr.isCrossRepository !== true || (owner !== null && str(pr.headRepositoryOwner?.login).toLowerCase() === owner);
+ *  ones from `owner` (the remote's owner: someone working from their own fork),
+ *  or all of them with `allForks` (PRs the session created are ours wherever they come from). */
+export function summarizeGithub(prs, owner = null, { allForks = false } = {}) {
+  const ours = (pr) =>
+    allForks || pr.isCrossRepository !== true || (owner !== null && str(pr.headRepositoryOwner?.login).toLowerCase() === owner);
   return list(prs)
     .filter((pr) => pr && ours(pr))
     .map((pr) => {

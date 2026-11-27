@@ -1,7 +1,7 @@
 // Run: node --test pull-requests/mod/
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadPullRequests, repoRoot } from "./load.js";
+import { loadPullRequests, repoRoot, remoteRepos, loadSessionPrs } from "./load.js";
 
 // A stand-in for Herdr's exec: answers from a table keyed by "<command> <args>",
 // exit code 1 for anything not in it, and records every call.
@@ -193,4 +193,95 @@ test("repoRoot", async () => {
   assert.equal(await repoRoot(where, exec), null);
   ({ exec } = fakeExec({ "git rev-parse --show-toplevel": new Error("spawn git ENOENT") }));
   assert.equal(await repoRoot(where, exec), null);
+});
+
+test("remoteRepos: every remote as host/path, credentials gone", async () => {
+  const { exec, calls } = fakeExec({ "git remote -v": { stdout:
+    "origin\thttps://u:tok@github.com/me/r.git (fetch)\norigin\thttps://u:tok@github.com/me/r.git (push)\nupstream\tgit@github.com:O/R.git (fetch)\n" } });
+  assert.deepEqual(await remoteRepos({ cwd: "/r", on: "devbox" }, exec), ["github.com/me/r", "github.com/o/r"]);
+  assert.equal(calls[0].options.cwd, "/r");
+  assert.equal(calls[0].options.on, "devbox");
+});
+
+test("remoteRepos: git fails → []", async () => {
+  assert.deepEqual(await remoteRepos(where, fakeExec({}).exec), []);
+  assert.deepEqual(await remoteRepos(where, fakeExec({ "git remote -v": new Error("spawn git ENOENT") }).exec), []);
+});
+
+const GH_FIELDS = GH_LIST("x").split(" --json ")[1];
+const ghView = (url) => `gh pr view ${url} --json ${GH_FIELDS}`;
+const home = { cwd: "/home/me" };
+
+test("loadSessionPrs: GitHub by URL, from any folder, forks kept", async () => {
+  const url = "https://github.com/o/r/pull/7";
+  const fork = { ...ghPr, isCrossRepository: true, headRepositoryOwner: { login: "someone" } };
+  const { exec, calls } = fakeExec({ [ghView(url)]: { stdout: JSON.stringify(fork) } });
+  const prs = await loadSessionPrs([url], home, exec);
+  assert.equal(prs.length, 1);
+  assert.equal(prs[0].ref, "#7");
+  assert.equal(prs[0].error, undefined);
+  assert.equal(calls[0].options.on, null);
+  assert.equal(calls[0].options.cwd, "/home/me");
+});
+
+test("loadSessionPrs: GitLab nested group, with -R and --hostname", async () => {
+  const url = "https://gitlab.example.com/g/sub/p/-/merge_requests/12";
+  const view = { ...glMr(12), web_url: url, head_pipeline: { status: "success", web_url: "https://gitlab.example.com/p/1" } };
+  const { exec } = fakeExec({
+    "glab mr view 12 -R https://gitlab.example.com/g/sub/p -F json": { stdout: JSON.stringify(view) },
+    "glab api projects/g%2Fsub%2Fp/merge_requests/12/approvals --hostname gitlab.example.com": glApprovals,
+  });
+  const [mr] = await loadSessionPrs([url], home, exec);
+  assert.equal(mr.ref, "!12");
+  assert.deepEqual(mr.pipeline, { status: "passed", url: "https://gitlab.example.com/p/1" });
+  assert.deepEqual(mr.approvals.names, ["Jane"]);
+});
+
+test("loadSessionPrs: GitLab approvals failing only blanks the approvals", async () => {
+  const url = "https://gitlab.com/g/p/-/merge_requests/3";
+  const { exec } = fakeExec({ "glab mr view 3 -R https://gitlab.com/g/p -F json": { stdout: JSON.stringify(glMr(3)) } });
+  const [mr] = await loadSessionPrs([url], home, exec);
+  assert.equal(mr.ref, "!3");
+  assert.equal(mr.approvals, null);
+  assert.equal(mr.error, undefined);
+});
+
+test("loadSessionPrs: one failing PR becomes an error card, the other loads", async () => {
+  const ok = "https://github.com/o/r/pull/7", gone = "https://github.com/o/r/pull/8";
+  const { exec } = fakeExec({
+    [ghView(ok)]: { stdout: JSON.stringify(ghPr) },
+    [ghView(gone)]: { code: 1, stderr: "GraphQL: Could not resolve to a PullRequest with the number of 8.\n" },
+  });
+  const prs = await loadSessionPrs([ok, gone], home, exec);
+  assert.equal(prs[0].ref, "#7");
+  assert.equal(prs[0].error, undefined);
+  assert.deepEqual(prs[1], {
+    ref: "#8", number: 8, title: "", url: gone, state: "unknown", source: "", target: "", updatedAt: "",
+    pipeline: null, approvals: null, blocker: null, error: "GraphQL: Could not resolve to a PullRequest with the number of 8.",
+  });
+});
+
+test("loadSessionPrs: unreadable output and error text without credentials", async () => {
+  const a = "https://github.com/o/r/pull/1", b = "https://gitlab.com/g/p/-/merge_requests/2";
+  const { exec } = fakeExec({
+    [ghView(a)]: { stdout: "not json" },
+    "glab mr view 2 -R https://gitlab.com/g/p -F json": { code: 1, stderr: "GET https://oauth2:SECRET@gitlab.com/api/v4/x: 404\n" },
+  });
+  const [one, two] = await loadSessionPrs([a, b], home, exec);
+  assert.equal(one.error, "Couldn't read gh's answer");
+  assert.equal(two.ref, "!2");
+  assert.equal(two.error, "GET https://gitlab.com/api/v4/x: 404");
+});
+
+test("loadSessionPrs: gh missing → error \"gh isn't installed\"", async () => {
+  const url = "https://github.com/o/r/pull/7";
+  const [pr] = await loadSessionPrs([url], home, fakeExec({ [ghView(url)]: new Error("spawn gh ENOENT") }).exec);
+  assert.equal(pr.error, "gh isn't installed");
+  assert.equal(pr.state, "unknown");
+});
+
+test("loadSessionPrs: nothing to fetch", async () => {
+  const { exec, calls } = fakeExec({});
+  assert.deepEqual(await loadSessionPrs([], home, exec), []);
+  assert.equal(calls.length, 0);
 });

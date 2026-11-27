@@ -14,6 +14,7 @@ import {
   withGitlabDetails,
   sortPrs,
 } from "./prs.js";
+import { parsePrUrl, remoteRepoKey } from "./session.js";
 
 const TIMEOUT_MS = 20000;
 // GitLab needs two more calls per MR for pipeline and approvals: only for the first few.
@@ -123,4 +124,57 @@ export async function loadPullRequests(where, exec) {
     const text = error instanceof Stop ? error.text : firstLine(String(error?.message ?? error)) || "Something went wrong";
     return { kind: "message", branch, text };
   }
+}
+
+/** Every remote of the pane's repo as "host/path" (see remoteRepoKey); [] when git fails. Never rejects. */
+export async function remoteRepos(where, exec) {
+  try {
+    const out = await exec("git", ["remote", "-v"], { cwd: where.cwd, on: where.on ?? null, timeout: TIMEOUT_MS });
+    if (out.code !== 0) return [];
+    const keys = out.stdout.split("\n").map((line) => remoteRepoKey(line.split(/\s+/)[1])).filter(Boolean);
+    return [...new Set(keys)];
+  } catch {
+    return [];
+  }
+}
+
+// A session PR whose status couldn't be fetched: a card with its ref, repo and the error.
+function failedPr(parsed, error) {
+  return {
+    ref: `${parsed.provider === "github" ? "#" : "!"}${parsed.number}`, number: parsed.number, title: "", url: parsed.url,
+    state: "unknown", source: "", target: "", updatedAt: "", pipeline: null, approvals: null, blocker: null, error,
+  };
+}
+
+async function sessionPr(parsed, run) {
+  if (parsed.provider === "github") {
+    const view = await cliJson(run, "gh", ["pr", "view", parsed.url, "--json", GH_FIELDS]);
+    const [pr] = summarizeGithub([view], null, { allForks: true });
+    if (!pr) throw new Stop("Couldn't read gh's answer");
+    return pr;
+  }
+  const n = String(parsed.number);
+  const [view, approvals] = await Promise.all([
+    cliJson(run, "glab", ["mr", "view", n, "-R", `https://${parsed.host}/${parsed.path}`, "-F", "json"]),
+    optionalJson(run, "glab", ["api", `projects/${encodeURIComponent(parsed.path)}/merge_requests/${n}/approvals`, "--hostname", parsed.host]),
+  ]);
+  const [pr] = summarizeGitlabList([view]);
+  if (!pr) throw new Stop("Couldn't read glab's answer");
+  return withGitlabDetails(pr, view, approvals);
+}
+
+/** The PRs behind the session's URLs, in the same order, each fetched on this computer. Never rejects. */
+export async function loadSessionPrs(urls, { cwd }, exec) {
+  const run = runner({ cwd, on: null }, exec);
+  return Promise.all(
+    urls.map(parsePrUrl).filter(Boolean).map(async (parsed) => {
+      try {
+        return await sessionPr(parsed, run);
+      } catch (error) {
+        const tool = parsed.provider === "github" ? "gh" : "glab";
+        const text = error instanceof Stop ? error.text : firstLine(String(error?.message ?? error));
+        return failedPr(parsed, text || `${tool} failed`);
+      }
+    }),
+  );
 }

@@ -227,3 +227,10 @@ test("refreshDue", () => {
   assert.equal(refreshDue({ cachedAt: now - 15_000, now, force: false, justShown: false, keyChanged: true }), true);
   assert.equal(refreshDue({ cachedAt: now - 5_000, now, force: false, justShown: false, keyChanged: true }), false);
 });
+
+test("summarizeGithub: allForks keeps PRs from anyone's fork", () => {
+  const fork = { ...gh, isCrossRepository: true, headRepositoryOwner: { login: "someone" } };
+  assert.equal(summarizeGithub([fork]).length, 0);
+  assert.equal(summarizeGithub([fork], "me").length, 0);
+  assert.equal(summarizeGithub([fork], null, { allForks: true }).length, 1);
+});
