@@ -10,6 +10,14 @@ branch. Each one shows:
 - approvals: who approved, and on GitLab `n of m` required
 - what blocks merging, if anything: conflicts or changes requested
 
+With the `herdr-claude-prs` plugin it also lists the PRs the Claude Code
+conversation in that pane created, in any repo (see Session PRs below). Every
+card shows its repo's name; cards of the pane's own repo (any of its remotes)
+have an accent strip on the left and come first, the pane branch's at the top.
+When the branch itself has no PRs, that message shows as one line above the
+session's. A session PR that can't be fetched shows its number, repo and the
+error.
+
 Open PRs come first, then merged and closed ones, newest first.
 
 ## How it works

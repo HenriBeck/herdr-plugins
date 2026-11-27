@@ -1,14 +1,20 @@
 // pull-requests: a side panel (next to Files and Changes) listing the GitHub pull
-// requests or GitLab merge requests of the focused pane's branch, with their
-// pipeline, approvals and state. Data comes from gh / glab (see load.js).
+// requests or GitLab merge requests of the focused pane's branch, and the ones
+// the Claude Code conversation in that pane created (saved by the
+// herdr-claude-prs plugin), with their pipeline, approvals and state. Data
+// comes from gh / glab (see load.js); session PRs are matched in session.js.
 import { View, div, svg } from "gpui-kit";
 import { h_flex, v_flex, Scrollbar } from "gpui-base";
-import { spaces, panes, focused, layout, window, theme, exec, checking } from "herdr";
-import { loadPullRequests, repoRoot } from "./load.js";
+import { spaces, panes, focused, agents, layout, window, theme, exec, checking, readTextFile, home } from "herdr";
+import { loadPullRequests, repoRoot, remoteRepos, loadSessionPrs } from "./load.js";
+import { parseSessionFile, mergePrs } from "./session.js";
 import { pipelineLabel, approvalsLabel, ageLabel, refreshDue } from "./prs.js";
 
 // Kept answers and folder → repo lookups; the oldest go first past these.
 const MAX_CACHED = 50, MAX_ROOTS = 200;
+// How often the focused terminal's session file is read while the panel shows.
+const SESSION_POLL_MS = 2000;
+const INVISIBLE = "#00000000";
 
 function remember(map, key, value, max) {
   map.delete(key);
@@ -33,6 +39,13 @@ function location() {
   return { cwd: pane?.cwd || f?.cwd || space?.folder || null, on, branch: pane?.branch ?? null };
 }
 
+// The focused terminal when it runs a live agent on this computer (ids with a
+// "/" are on another machine): only then are its session PRs read.
+function sessionTerminal() {
+  const id = focused()?.terminal;
+  return id && !id.includes("/") && agents().some((a) => a.address === id) ? id : null;
+}
+
 // Only fetch while someone can see the panel.
 function shown() {
   const root = layout();
@@ -46,17 +59,39 @@ export default class PullRequests extends View {
     this.loading = new Set(); // keys being fetched
     this.roots = new Map(); // [on, cwd] → repo root (null: not a repo)
     this.resolving = new Set(); // [on, cwd] being looked up
+    this.sessionTexts = new Map(); // terminal id → its session file's text (null: none)
     this.wasShown = false;
     if (checking()) return; // `herdr-app check` runs init for real: no gh / glab calls there.
     cx.timer.every(1000, (cx) => this.tick(cx));
+    cx.timer.every(SESSION_POLL_MS, (cx) => this.readSession(cx));
+  }
+
+  readSession(cx) {
+    const id = shown() ? sessionTerminal() : null;
+    if (!id) return;
+    cx.spawn(async (cx) => {
+      const text = await readTextFile(`${home()}/.cache/herdr-claude-prs/${id}.json`).catch(() => null);
+      if (this.sessionTexts.get(id) !== text) {
+        remember(this.sessionTexts, id, text, MAX_ROOTS);
+        this.tick(cx); // a new PR is a new key: fetched straight away
+        cx.notify();
+      }
+    });
+  }
+
+  // The session PR URLs to show for the focused pane: none for a pane on another machine.
+  sessionUrls(where) {
+    const id = where.on === null ? sessionTerminal() : null;
+    return id ? parseSessionFile(this.sessionTexts.get(id) ?? null) : [];
   }
 
   // The cache key: the repo, not the folder, so moving around inside a repo
-  // keeps its answer. Undefined until the folder's repo root is known.
+  // keeps its answer, and the session's PR URLs, so a new PR is fetched at once.
+  // Undefined until the folder's repo root is known.
   keyFor(where) {
     const folder = JSON.stringify([where.on, where.cwd]);
     if (!this.roots.has(folder)) return undefined;
-    return JSON.stringify([where.on, this.roots.get(folder) ?? where.cwd, where.branch]);
+    return JSON.stringify([where.on, this.roots.get(folder) ?? where.cwd, where.branch, this.sessionUrls(where)]);
   }
 
   tick(cx, force = false) {
@@ -99,7 +134,12 @@ export default class PullRequests extends View {
     this.loading.add(key);
     cx.notify();
     cx.spawn(async (cx) => {
-      const result = await loadPullRequests({ cwd: where.cwd, on: where.on }, exec);
+      const [branch, remotes, session] = await Promise.all([
+        loadPullRequests({ cwd: where.cwd, on: where.on }, exec),
+        remoteRepos({ cwd: where.cwd, on: where.on }, exec),
+        loadSessionPrs(this.sessionUrls(where), { cwd: home() }, exec),
+      ]);
+      const result = { branch, remotes, session };
       // Stored under its own key: render looks up the focused one, so a late
       // answer for another pane never shows here.
       remember(this.cache, key, { result, at: Date.now() }, MAX_CACHED);
@@ -118,15 +158,25 @@ export default class PullRequests extends View {
       cx.stop_propagation();
       if (url) cx.open_url(url);
     };
-    return v_flex().id(`pr-${pr.ref}`).flex_none().p(10).gap(4).rounded(8).cursor_pointer()
+    const body = v_flex().flex_1().min_w(0).p(10).pl(7).gap(4)
+      .child(h_flex().min_w(0).gap(6)
+        .child(div().flex_none().text_color(t.dim).child(pr.ref))
+        .child(div().flex_1().min_w(0).truncate().font_medium().child(pr.title))
+        .when(Boolean(pr.repo?.name), (el) => el.child(div().flex_none().max_w(140).truncate().text_size(11).text_color(t.dim)
+          .child(pr.repo.name))));
+    // Current-repo cards carry an accent strip; the others keep the same space so text lines up.
+    return h_flex().id(`pr-${pr.url || pr.ref}`).flex_none().items_stretch().rounded(8).overflow_hidden().cursor_pointer()
       .border_1().border_color(t.border).hover((s) => s.bg(t.hover))
       .text_color(done ? t.dim : t.foreground)
       .on_click(open(pr.url))
-      .child(h_flex().min_w(0).gap(6)
-        .child(div().flex_none().text_color(t.dim).child(pr.ref))
-        .child(div().min_w(0).truncate().font_medium().child(pr.title)))
+      .child(div().w(3).flex_none().bg(pr.current ? t.accent : INVISIBLE))
+      .child(pr.error ? body.child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(pr.error)) : this.details(body, pr, t, done, open));
+  }
+
+  details(body, pr, t, done, open) {
+    return body
       .child(div().min_w(0).truncate().text_size(11.5).text_color(t.dim).child(`${pr.state} · ${pr.source} → ${pr.target}`))
-      .when(Boolean(pr.pipeline), (el) => el.child(h_flex().id(`pipeline-${pr.ref}`).gap(6).items_center().text_size(11.5)
+      .when(Boolean(pr.pipeline), (el) => el.child(h_flex().id(`pipeline-${pr.url || pr.ref}`).gap(6).items_center().text_size(11.5)
         .text_color(done ? t.dim : this.pipelineColor(pr.pipeline.status, t))
         .when(Boolean(pr.pipeline.url), (el) => el.on_click(open(pr.pipeline.url)))
         .child(div().size(6).rounded(3).flex_none().bg(this.pipelineColor(pr.pipeline.status, t)))
@@ -143,12 +193,15 @@ export default class PullRequests extends View {
     const cached = key ? this.cache.get(key) : null;
     const loading = key ? this.loading.has(key) : false;
     const result = cached?.result;
-    const branch = result?.branch ?? where.branch;
+    const branch = result?.branch.branch ?? where.branch;
+    const merged = result ? mergePrs({ ...result, paneBranch: where.branch }) : null;
 
-    let body;
+    // `body`: one dim line instead of cards; `notice`: one dim line above them.
+    let body, notice = null;
     if (!where.cwd) body = "No focused pane";
-    else if (!result) body = "Loading…";
-    else if (result.kind === "message") body = result.text;
+    else if (!merged) body = "Loading…";
+    else if (!merged.prs.length) body = merged.notice ?? "No pull requests";
+    else notice = merged.notice;
 
     return v_flex().id("pull-requests").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background)
       .border_1().border_color(t.border).text_color(t.foreground).text_size(13)
@@ -164,7 +217,8 @@ export default class PullRequests extends View {
       .child(div().flex_1().min_h(0).relative()
         .child(v_flex().id("pr-list").absolute().inset_0().overflow_y_scroll().p(8).gap(8)
           .when(body !== undefined, (el) => el.child(div().p(6).text_color(t.dim).child(body)))
-          .when(body === undefined, (el) => el.children(result.prs.map((pr) => this.card(pr, t)))))
+          .when(Boolean(notice), (el) => el.child(div().px(6).pt(2).text_size(12).text_color(t.dim).child(notice)))
+          .when(body === undefined, (el) => el.children(merged.prs.map((pr) => this.card(pr, t)))))
         .child(Scrollbar.vertical("pr-list").absolute().inset_0()));
   }
 }
