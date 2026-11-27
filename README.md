@@ -38,6 +38,7 @@ covers installing it on its own.
 claude plugin marketplace add "$PWD"
 claude plugin install herdr-claude-usage@herdr-plugins
 claude plugin install herdr-claude-context@herdr-plugins
+claude plugin install herdr-claude-prs@herdr-plugins
 ```
 
 or at the prompt of a Claude Code session, straight from GitHub:
@@ -45,6 +46,7 @@ or at the prompt of a Claude Code session, straight from GitHub:
 ```
 /plugin install herdr-claude-usage --marketplace HenriBeck/herdr-plugins
 /plugin install herdr-claude-context --marketplace HenriBeck/herdr-plugins
+/plugin install herdr-claude-prs --marketplace HenriBeck/herdr-plugins
 ```
 
 Sessions that were already open pick them up after a restart or
@@ -108,6 +110,7 @@ symlink. Claude Code plugin edits are picked up by `/reload-plugins`.
 ```sh
 claude plugin test claude-usage/claude-code-mod
 claude plugin test claude-context/claude-code-mod
+claude plugin test pull-requests/claude-code-mod
 node --test claude-usage/mod/ claude-context/mod/ pull-requests/mod/ repo-link/mod/
 ```
 

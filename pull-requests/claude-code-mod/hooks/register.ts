@@ -104,6 +104,47 @@ function logFailure($: Engine, err: unknown) {
 export const register: Register = on => {
   const state: State = { id: null, prs: [], terminalText: null }
 
+  // A new process, `claude --resume` (which keeps the session id) or a plugin reload.
+  on('session.start', async ($, e, next) => {
+    const result = await next(e)
+    try {
+      if (await $.env.get('HC_TERMINAL_ID')) await switchTo($, state, await $.session.id())
+    } catch (err) {
+      logFailure($, err)
+    }
+    return result
+  })
+
+  // /clear and an in-process /resume fire no session.start: the first prompt
+  // under the new id is where the new conversation's list comes in.
+  on('prompt.submit', async ($, e, next) => {
+    try {
+      if (await $.env.get('HC_TERMINAL_ID')) {
+        const id = await $.session.id()
+        if (id !== state.id) await switchTo($, state, id)
+      }
+    } catch (err) {
+      logFailure($, err)
+    }
+    return next(e)
+  })
+
+  on('session.end', async ($, e, next) => {
+    try {
+      if (e.reason === 'clear' || e.reason === 'resume') {
+        // Another conversation takes over this process: drop the old list at once.
+        state.id = null
+        state.prs = []
+        await writeTerminal($, state, { session_id: null, ended: false, prs: [] })
+      } else {
+        await writeTerminal($, state, { session_id: state.id ?? e.sessionId, ended: true, prs: state.prs })
+      }
+    } catch (err) {
+      logFailure($, err)
+    }
+    return next(e)
+  })
+
   on('tool.call', async ($, e, next) => {
     const ran = await next(e)
     if (ran.deny !== undefined || ran.isError === true) return ran

@@ -34,12 +34,37 @@ each repo and branch is kept, so switching back to a pane, or moving to another
 folder in the same repo, shows it straight away; it's refreshed unless it's
 only seconds old.
 
+## Session PRs
+
+With the Claude Code plugin `herdr-claude-prs` (in `claude-code-mod/`), the
+panel also lists the PRs and MRs the Claude Code conversation in the focused
+pane created, in any repo. The plugin records the PR link when a
+`gh pr create` or `glab mr create` command succeeds, or a GitHub/GitLab MCP
+tool creates one (`create_pull_request`, `create_merge_request`,
+`save_merge_request` without an MR number). Subagents' creates count too.
+
+It keeps each conversation's links in
+`~/.cache/herdr-claude-prs/sessions/<session id>.json` (the 20 newest) and
+copies the list of the conversation now running in a Herdr terminal to
+`~/.cache/herdr-claude-prs/<terminal id>.json`, which the panel reads. The PRs
+follow the conversation: `claude --resume` brings them back, `/clear` starts
+an empty list, and after `/resume` inside a running session they show from
+your next prompt on.
+
+Not recorded for now: a create run in the background, a command chain that
+fails after the create (`gh pr create … && gh pr merge --auto` failing), and
+`gh`'s "already exists" message.
+
 The panel never shows remote URLs, and errors from the CLIs are stripped of
 credentials before they're shown.
 
 ## Install
 
 ```sh
+# The Claude Code plugin, for session PRs (from a clone of this repo)
+claude plugin marketplace add "$PWD"
+claude plugin install herdr-claude-prs@herdr-plugins
+
 ./pull-requests/install.sh   # copies the mod into Herdr and runs herdr-app check; re-run after edits
 
 # Add the panel to your layout's side panel (here main-usage, a clone of main: see ../claude-usage)
@@ -62,10 +87,12 @@ herdr-app do layout.show --id panel
 jq '(.. | objects | select(.id == "panel-body") | .children) |= map(select(.id != "pull-requests"))' \
   ~/.config/herdr-app/layouts/main-usage.json > /tmp/l.json && mv /tmp/l.json ~/.config/herdr-app/layouts/main-usage.json
 rm -r ~/.config/herdr-app/mods/pull-requests
+claude plugin uninstall herdr-claude-prs@herdr-plugins
 ```
 
 ## Tests
 
 ```sh
 node --test pull-requests/mod/
+claude plugin test pull-requests/claude-code-mod
 ```

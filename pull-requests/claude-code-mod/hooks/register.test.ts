@@ -188,3 +188,86 @@ test('HERDR_CLAUDE_PRS_DIR overrides the folder', async ($, on) => {
   await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
   expect(Object.keys(files).sort()).toEqual(['/elsewhere/sessions/sess-1.json', '/elsewhere/t9.json'])
 })
+
+const seed = (files: Record<string, string>, id: string, list: string[]) => {
+  files[session(id)] = JSON.stringify({ updated_at: 1, prs: list.map(url => ({ url, created_at: 1 })) })
+}
+const start = { cwd: '/w', surface: 'terminal', isInteractive: true } as never
+const end = (reason: string, sessionId = 'sess-1') => ({ reason, sessionId, resume: { id: sessionId } }) as never
+
+test("session.start shows a resumed conversation's PRs", async ($, on) => {
+  const { files } = setup(on)
+  seed(files, 'sess-1', [PR7])
+  await $.session.start(start)
+  expect(read(files, TERMINAL)).toEqual({ updated_at: NOW_S, session_id: 'sess-1', ended: false, prs: [{ url: PR7, created_at: 1 }] })
+})
+
+test('session.start with no record writes an empty list', async ($, on) => {
+  const { files } = setup(on)
+  await $.session.start(start)
+  expect(read(files, TERMINAL)).toEqual({ updated_at: NOW_S, session_id: 'sess-1', ended: false, prs: [] })
+})
+
+test('/clear empties the list; the next prompt starts the new conversation empty', async ($, on) => {
+  const { files, world } = setup(on)
+  await $.session.start(start)
+  world.answer = bash(`${PR7}\n`)
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  await $.session.end(end('clear'))
+  expect(read(files, TERMINAL)).toEqual({ updated_at: NOW_S, session_id: null, ended: false, prs: [] })
+  world.sid = 'sess-2'
+  await $.prompt.submit({ text: 'hi' } as never)
+  expect(read(files, TERMINAL)).toEqual({ updated_at: NOW_S, session_id: 'sess-2', ended: false, prs: [] })
+  expect(urls(files, session('sess-1'))).toEqual([PR7])
+})
+
+test('an in-process /resume shows the resumed PRs from the next prompt', async ($, on) => {
+  const { files, world } = setup(on)
+  seed(files, 'old', [PR7])
+  await $.session.start(start)
+  await $.session.end(end('resume'))
+  expect(urls(files, TERMINAL)).toEqual([])
+  world.sid = 'old'
+  await $.prompt.submit({ text: 'go on' } as never)
+  expect(read(files, TERMINAL).session_id).toBe('old')
+  expect(urls(files, TERMINAL)).toEqual([PR7])
+})
+
+test('a create after /clear without a prompt goes to the new conversation', async ($, on) => {
+  const { files, world } = setup(on)
+  await $.session.start(start)
+  await $.session.end(end('clear'))
+  world.sid = 'sess-2'
+  world.answer = bash(`${PR7}\n`)
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  expect(urls(files, session('sess-2'))).toEqual([PR7])
+  expect(read(files, TERMINAL).session_id).toBe('sess-2')
+  expect(files[session('sess-1')]).toBe(undefined)
+})
+
+test('exit marks the terminal file ended and keeps the record', async ($, on) => {
+  const { files, world } = setup(on)
+  await $.session.start(start)
+  world.answer = bash(`${PR7}\n`)
+  await $.tool.call({ tool: 'Bash', command: 'gh pr create --fill' })
+  const record = files[session('sess-1')]
+  await $.session.end(end('prompt_input_exit'))
+  expect(read(files, TERMINAL)).toEqual({ updated_at: NOW_S, session_id: 'sess-1', ended: true, prs: [{ url: PR7, created_at: NOW_S }] })
+  expect(files[session('sess-1')]).toBe(record)
+})
+
+test('a prompt under the same id writes nothing', async ($, on) => {
+  const { d } = setup(on)
+  await $.session.start(start)
+  const before = d.writes
+  await $.prompt.submit({ text: 'hi' } as never)
+  expect(d.writes).toBe(before)
+})
+
+test('the lifecycle does nothing outside Herdr', async ($, on) => {
+  const { d } = setup(on, { HOME: '/home/me' })
+  await $.session.start(start)
+  await $.prompt.submit({ text: 'hi' } as never)
+  await $.session.end(end('prompt_input_exit'))
+  expect(d.writes).toBe(0)
+})
