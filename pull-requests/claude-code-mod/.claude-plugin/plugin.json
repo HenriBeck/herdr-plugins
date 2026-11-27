@@ -1,0 +1,5 @@
+{
+  "name": "herdr-claude-prs",
+  "version": "0.1.0",
+  "description": "Saves the PRs and MRs each Claude Code conversation creates for the Herdr desktop app's pull requests panel"
+}
